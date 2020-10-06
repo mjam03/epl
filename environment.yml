@@ -1,0 +1,18 @@
+name: epl
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - beautifulsoup4
+  - flask
+  - ipywidgets
+  - jupyter
+  - jupyterlab
+  - matplotlib
+  - numpy
+  - pandas
+  - scipy
+  - seaborn
+  - xmltodict
+  - pip:
+    - lxml

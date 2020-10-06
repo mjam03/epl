@@ -18,7 +18,7 @@ def query_db(query):
         conn = sqlite3.connect(DB_PATH)
     except:
         return "Unable to establish connection to {}".format(DB_PATH)
-    
+
     try:
         print('Running query: {}'.format(query))
         res = pd.read_sql(query, conn)
@@ -36,7 +36,7 @@ def query_creator(table, cols=None, wc=None):
     '''
     if wc:
         conds = []
-        for col,cond in wc.items():
+        for col, cond in wc.items():
             if isinstance(cond[1], str):
                 conds.append("{} {} '{}'".format(col, cond[0], cond[1]))
             else:
@@ -44,18 +44,18 @@ def query_creator(table, cols=None, wc=None):
         wc = ' AND '.join(conds)
     else:
         wc = ''
-    
+
     if cols:
         col_query = ', '.join(cols)
     else:
         col_query = '*'
-    
+
     query = 'SELECT {} FROM {} WHERE {}'.format(col_query, table, wc)
     return query
 
 
 def create_and_query(table, cols=None, wc=None):
-    
+
     query = query_creator(table, cols, wc)
     res = query_db(query)
     return res
@@ -63,4 +63,3 @@ def create_and_query(table, cols=None, wc=None):
 
 if __name__ == "__main__":
     None
- 
