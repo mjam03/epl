@@ -54,6 +54,13 @@ def query_creator(table, cols=None, wc=None):
     return query
 
 
+def create_and_query(table, cols=None, wc=None):
+    
+    query = query_creator(table, cols, wc)
+    res = query_db(query)
+    return res
+
+
 if __name__ == "__main__":
     None
  
