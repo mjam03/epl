@@ -2,11 +2,20 @@ import datetime as dt
 import numpy as np
 import os
 import pandas as pd
+import pathlib
 import sqlite3
 
 
 # data path for the sqlite database
-DB_PATH = '/Users/jamisonm/dev/epl/data/match_results.sqlite'
+dir_name = str(pathlib.Path(__file__).parent.absolute())
+dir_name = dir_name.split('/')[:-1] + ['data', 'match_results.sqlite']
+DB_PATH = "/".join(dir_name)
+
+
+def create_conn():
+
+    conn = sqlite3.connect(DB_PATH)
+    return conn
 
 
 def query_db(query):
