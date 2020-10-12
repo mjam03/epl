@@ -1,4 +1,5 @@
 .vscode
 data
 libs
+__pycache__
 /notebooks/.ipynb_checkpoints

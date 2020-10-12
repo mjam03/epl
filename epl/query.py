@@ -41,7 +41,7 @@ def query_creator(table, cols=None, wc=None):
                 conds.append("{} {} '{}'".format(col, cond[0], cond[1]))
             else:
                 conds.append("{} {} {}".format(col, cond[0], cond[1]))
-        wc = ' AND '.join(conds)
+        wc = 'WHERE ' + ' AND '.join(conds)
     else:
         wc = ''
 
@@ -50,7 +50,7 @@ def query_creator(table, cols=None, wc=None):
     else:
         col_query = '*'
 
-    query = 'SELECT {} FROM {} WHERE {}'.format(col_query, table, wc)
+    query = 'SELECT {} FROM {} {}'.format(col_query, table, wc)
     return query
 
 
