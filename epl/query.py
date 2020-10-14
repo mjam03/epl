@@ -13,7 +13,6 @@ DB_PATH = "/".join(dir_name)
 
 
 def create_conn():
-
     conn = sqlite3.connect(DB_PATH)
     return conn
 
@@ -67,6 +66,8 @@ def create_and_query(table, cols=None, wc=None):
 
     query = query_creator(table, cols, wc)
     res = query_db(query)
+    if 'Date' in res.columns:
+        res['Date'] = pd.to_datetime(res['Date'])
     return res
 
 

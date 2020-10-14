@@ -59,7 +59,11 @@ def table_calculator(match_results, res_type):
     df_res = pd.pivot_table(data=df_match[[
                             'Team', 'FTR', 'MP']], index='Team', columns='FTR', values='MP').fillna(0)
 
-    #
+    # if there are no results for a given type, then create col with zero to complete table
+    for res in ['W', 'D', 'L']:
+        if res not in df_res.columns:
+            df_res[res] = 0
+
     df_res_goals = df_match.groupby('Team').sum()
     df_res_goals['GD'] = df_res_goals['GF'] - df_res_goals['GA']
     df_res = pd.merge(left=df_res_goals, right=df_res, how='left',
@@ -80,10 +84,10 @@ def full_table_calculator(match_results):
     df_res = df_res.groupby('Team').sum().sort_values(
         ['Points', 'GD', 'GF'], ascending=False)
     df_res = df_res.reset_index().reset_index().rename(
-        columns={'index': 'position'}).set_index('Team')
-    df_res['position'] = df_res['position'] + 1
+        columns={'index': 'LeagPos'}).set_index('Team')
+    df_res['LeagPos'] = df_res['LeagPos'] + 1
     df_res = df_res[[x for x in df_res.columns if x !=
-                     'position'] + ['position']]
+                     'LeagPos'] + ['LeagPos']]
 
     return df_res
 
@@ -107,8 +111,8 @@ def league_table_asof(div, season, asof_date, conn=None):
     if not isinstance(season, str):
         try:
             elig_seasons = pd.read_sql(
-                """SELECT DISTINCT season from matches""", conn)
-            elig_seasons = elig_seasons['season'].values
+                """SELECT DISTINCT Season from matches""", conn)
+            elig_seasons = elig_seasons['Season'].values
         except:
             return 'Cannot connect to db'
         conn.close()
@@ -122,12 +126,12 @@ def league_table_asof(div, season, asof_date, conn=None):
             try:
                 asof_date = pd.to_datetime(asof_date)
             except:
-                return "Failed to convert asof_date to datetime using pd.to_datetime"
+                return "Failed to convert asof_date: {} to datetime using pd.to_datetime".format(asof_date)
 
     # query required data from db
     table_cols = ['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR'] + ['Date']
     df_raw = create_and_query('matches', cols=table_cols, wc={
-                              'Div': ['=', div], 'season': ['=', season]})
+                              'Div': ['=', div], 'Season': ['=', season]})
     df_raw['Date'] = pd.to_datetime(df_raw['Date'])
 
     df = df_raw[df_raw.Date <= asof_date]
@@ -150,7 +154,7 @@ def find_matches_by_score(score, is_ht=False, div=None, home_team=None, away_tea
         wc = None
 
     # get cols we care about
-    cols = ['Div', 'Date', 'season', 'HomeTeam',
+    cols = ['Div', 'Date', 'Season', 'HomeTeam',
             'AwayTeam', 'FTHG', 'FTAG', 'HTHG', 'HTAG']
     # query
     df = create_and_query('matches', cols, wc).dropna()
@@ -159,28 +163,31 @@ def find_matches_by_score(score, is_ht=False, div=None, home_team=None, away_tea
     away_goals = 'HTAG' if is_ht else 'FTAG'
 
     # create tuple for score and select where matches
-    df['score'] = list(zip(df[home_goals], df[away_goals]))
-    df = df[(df['score'] == score) | (df['score'] == score[::-1])]
+    df['Score'] = list(zip(df[home_goals], df[away_goals]))
+    df = df[(df['Score'] == score) | (df['Score'] == score[::-1])]
 
     # if leading / trailing team specified then apply that filter
     # don't know how to do this in sql yet so easier in pandas for now post sql query
     if leading_team:
         if score[0] == score[1]:
-            df = df[(df.HomeTeam == leading_team) |
-                    (df.AwayTeam == leading_team)]
+            df = df[(df['HomeTeam'] == leading_team) |
+                    (df['AwayTeam'] == leading_team)]
         else:
-            df = df[((df.HomeTeam == leading_team) & (df[home_goals] > df[away_goals])) | (
-                (df.AwayTeam == leading_team) & (df[home_goals] < df[away_goals]))]
+            df = df[((df['HomeTeam'] == leading_team) & (df[home_goals] > df[away_goals])) | (
+                (df['AwayTeam'] == leading_team) & (df[home_goals] < df[away_goals]))]
     if losing_team:
         if score[0] == score[1]:
-            df = df[(df.HomeTeam == losing_team) |
-                    (df.AwayTeam == losing_team)]
+            df = df[(df['HomeTeam'] == losing_team) |
+                    (df['AwayTeam'] == losing_team)]
         else:
-            df = df[((df.HomeTeam == losing_team) & (df[home_goals] < df[away_goals])) | (
-                (df.AwayTeam == leading_team) & (df[home_goals] > df[away_goals]))]
+            df = df[((df['HomeTeam'] == losing_team) & (df[home_goals] < df[away_goals])) | (
+                (df['AwayTeam'] == leading_team) & (df[home_goals] > df[away_goals]))]
 
     return df
 
 
 if __name__ == "__main__":
+    # function to check if working
+    # x = league_table_asof('E0', '2019/2020', None, conn=None)
+    # print(x)
     None

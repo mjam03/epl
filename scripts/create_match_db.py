@@ -102,9 +102,9 @@ for country, links in all_links.items():
             df = pd.read_csv(io.StringIO(output.decode('utf-8', errors='ignore')),
                              parse_dates=True, error_bad_lines=False, warn_bad_lines=False)
             # add columns that define the season and league
-            df['country'] = country
-            df['league'] = s[0]
-            df['season'] = season
+            df['Country'] = country
+            df['League'] = s[0]
+            df['Season'] = season
             # add to the list of output dfs
             output_dfs.append(df)
 
