@@ -42,7 +42,7 @@ def result_calculator(match_results, res_type):
     else:
         return 'res_type must either be H or A, not: {}'.format(res_type)
 
-    return match_results.dropna()
+    return match_results
 
 
 def table_calculator(match_results, res_type):
