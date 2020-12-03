@@ -3,3 +3,5 @@ data
 libs
 __pycache__
 /notebooks/.ipynb_checkpoints
+/notebooks/Helpful
+/notebooks/feature_df

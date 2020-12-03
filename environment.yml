@@ -12,9 +12,11 @@ dependencies:
   - numpy
   - pandas
   - pip
+  - pydotplus
   - scikit-learn
   - scipy
   - seaborn
+  - six
   - statsmodels
   - xmltodict
   - pip:

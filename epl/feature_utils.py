@@ -4,35 +4,46 @@ import pandas as pd
 
 from epl.match_utils import full_table_calculator
 
+COL_MAP = {'GF': {'Home': 'FTHG', 'Away': 'FTAG'},
+           'GA': {'Home': 'FTAG', 'Away': 'FTHG'},
+           'SF': {'Home': 'HS', 'Away': 'AS'},
+           'SA': {'Home': 'AS', 'Away': 'HS'},
+           'STF': {'Home': 'HST', 'Away': 'AST'},
+           'STA': {'Home': 'AST', 'Away': 'HST'},
+           'PPG': {'Home': 'FTR', 'Away': 'FTR'}
+           }
+
 
 def add_game_week(match_df):
 
     # create the columns init with nan
-    match_df['HomeTeamGameWeek'] = np.nan
-    match_df['AwayTeamGameWeek'] = np.nan
+    match_df['HGW'] = np.nan
+    match_df['AGW'] = np.nan
     # get col order to apply at end as combine_first changes col order
     df_cols = match_df.columns
 
     # ensure sorted by date, then create game week by season
     match_df = match_df.sort_values('Date', ascending=True)
-    for s in match_df.Season.unique():
-        # new df for only that season
-        df_s = match_df[match_df.Season == s]
-        # for each team assign game week (as already sorted by Date)
-        for t in df_s.HomeTeam.unique():
-            df_t = df_s[(df_s.HomeTeam == t) | (df_s.AwayTeam == t)]
-            df_t['HomeTeamGameWeek'] = [x for x in range(1, len(df_t)+1)]
-            df_t['AwayTeamGameWeek'] = [x for x in range(1, len(df_t)+1)]
+    for d in match_df.Div.unique():
+        print('Adding game week for div: {}'.format(d))
+        for s in match_df.Season.unique():
+            # new df for only that season
+            df_s = match_df[(match_df.Season == s) & (match_df.Div == d)]
+            # for each team assign game week (as already sorted by Date)
+            for t in df_s.HomeTeam.unique():
+                df_t = df_s[(df_s.HomeTeam == t) | (df_s.AwayTeam == t)]
+                df_t['GW'] = [x for x in range(1, len(df_t)+1)]
 
-            # where team is the HomeTeam, set GameWeek else nan, same for away
-            df_t['HomeTeamGameWeek'] = np.where(
-                df_t.HomeTeam == t, df_t['HomeTeamGameWeek'], np.nan)
-            df_t['AwayTeamGameWeek'] = np.where(
-                df_t.AwayTeam == t, df_t['AwayTeamGameWeek'], np.nan)
+                # where team is the HomeTeam, set GameWeek else nan, same for away
+                df_t['HGW'] = np.where(
+                    df_t.HomeTeam == t, df_t['GW'], np.nan)
+                df_t['AGW'] = np.where(
+                    df_t.AwayTeam == t, df_t['GW'], np.nan)
+                df_t = df_t.drop(columns=['GW'])
 
-            # combine first onto the original df
-            match_df = match_df.combine_first(
-                df_t[['HomeTeamGameWeek', 'AwayTeamGameWeek']])
+                # combine first onto the original df
+                match_df = match_df.combine_first(
+                    df_t[['HGW', 'AGW']])
 
     # keep original col order and ensure date sorted again
     match_df = match_df[df_cols].sort_values(['Date'])
@@ -47,44 +58,49 @@ def add_league_pos(match_df):
     # list to hold all the league tables at each week for each season
     league_tables = []
 
-    # compute for each season
-    for s in match_df.Season.unique():
-        print("Computing league table for season: {}".format(s))
-        # get only matches for that season and get the min game week per match up
-        df_s = match_df[match_df.Season == s]
-        df_s['MinGameWeek'] = df_s[[
-            'HomeTeamGameWeek', 'AwayTeamGameWeek']].min(axis=1)
-
-        # now we get the dates that correspond to each game week
-        week_dates = df_s[['Date', 'MinGameWeek']].groupby(
-            'MinGameWeek').max().to_dict()['Date']
-
-        # for each week_date we then get the table as of that point in time
-        for week, date in week_dates.items():
-            # compute league table up to that point
-            tab = full_table_calculator(df_s[df_s.Date <= date])
-            # add on some other columns for the join
-            tab['Season'] = s
-            tab['GameWeek'] = week
-            league_tables.append(tab)
+    # for each div, season pair
+    for d in match_df.Div.unique():
+        for s in match_df[match_df.Div == d].Season.unique():
+            print("Computing league table for div: {}, season: {}".format(d, s))
+            # get relevant matches
+            df = match_df[(match_df.Season == s) & (match_df.Div == d)]
+            # get all game weeks
+            game_weeks = df.HGW.unique()
+            # for each game week
+            for g in game_weeks:
+                # calc the table
+                tab = full_table_calculator(
+                    df[(df.HGW <= g) | (df.AGW <= g)])
+                # add on some other relevant data for join
+                tab['Div'] = d
+                tab['Season'] = s
+                tab['GW'] = g
+                league_tables.append(tab)
 
     # concat into 1 big df
     tables_df = pd.concat(league_tables)
     # we want to only know table pre game so we need to add 1 pre merge join
-    tables_df['GameWeek'] = tables_df['GameWeek'] + 1
+    tables_df['JoinGW'] = tables_df['GW'] + 1
 
     # create home and away versions to join on
     tables_df = tables_df.reset_index()
-    tables_home_df = tables_df[['Season', 'Team', 'Points', 'LeagPos', 'GameWeek']].rename(
-        columns={'Team': 'HomeTeam', 'GameWeek': 'HomeTeamGameWeek', 'Points': 'HomeTeamPoints', 'LeagPos': 'HomeLeagPos'})
-    tables_away_df = tables_df[['Season', 'Team', 'Points', 'LeagPos', 'GameWeek']].rename(
-        columns={'Team': 'AwayTeam', 'GameWeek': 'AwayTeamGameWeek', 'Points': 'AwayTeamPoints', 'LeagPos': 'AwayLeagPos'})
+    tables_home_df = tables_df[['Div', 'Season', 'Team', 'Points', 'LeagPos', 'JoinGW']].rename(
+        columns={'Team': 'HomeTeam', 'JoinGW': 'HGW', 'Points': 'HPoints', 'LeagPos': 'HLeagPos'})
+    tables_away_df = tables_df[['Div', 'Season', 'Team', 'Points', 'LeagPos', 'JoinGW']].rename(
+        columns={'Team': 'AwayTeam', 'JoinGW': 'AGW', 'Points': 'APoints', 'LeagPos': 'ALeagPos'})
 
     # join them on
     match_df = pd.merge(left=match_df, right=tables_home_df, how='left', on=[
-                        'Season', 'HomeTeamGameWeek', 'HomeTeam'])
+                        'Div', 'Season', 'HGW', 'HomeTeam'])
     match_df = pd.merge(left=match_df, right=tables_away_df, how='left', on=[
-                        'Season', 'AwayTeamGameWeek', 'AwayTeam'])
+                        'Div', 'Season', 'AGW', 'AwayTeam'])
+
+    match_df['HPoints'] = match_df['HPoints'].fillna(0)
+    match_df['APoints'] = match_df['APoints'].fillna(0)
+    match_df['HLeagPos'] = np.where(
+        match_df.HGW == 1, 10, match_df['HLeagPos'])
+    match_df['ALeagPos'] = np.where(
+        match_df.AGW == 1, 10, match_df['ALeagPos'])
 
     return match_df, tables_df
 
@@ -95,74 +111,113 @@ def add_prev_season_pos(match_df, tables_df, promotion_treatment='20'):
     season_dict = dict(zip(tables_df.Season.unique(),
                            tables_df.Season.unique()[1:]))
     # get the last game week per season so we only get the end of season tables
-    final_tables_df = tables_df[['Season', 'GameWeek']].groupby(
-        'Season').max().reset_index()
+    final_tables_df = tables_df[['Div', 'Season', 'GW']].groupby(
+        ['Div', 'Season']).max().reset_index()
     # create col for next season mapped from Season
     final_tables_df['NextSeason'] = final_tables_df['Season'].map(season_dict)
 
     # join onto original tables_df
     new_tables_df = pd.merge(
-        left=tables_df, right=final_tables_df, how='left', on=['Season', 'GameWeek'])
+        left=tables_df, right=final_tables_df, how='left', on=['Div', 'Season', 'GW'])
     # if not present then not last game week so ditch
     final_tables_df = new_tables_df[~new_tables_df.NextSeason.isna()]
     # rename cols
-    final_tables_df = final_tables_df[['Team', 'NextSeason', 'LeagPos']].rename(
+    final_tables_df = final_tables_df[['Team', 'Div', 'NextSeason', 'LeagPos']].rename(
         columns={'NextSeason': 'Season', 'LeagPos': 'PrevLeagPos'})
 
     # merge prev pos onto home and away cols of orig df
     match_df = pd.merge(left=match_df, right=final_tables_df.rename(columns={
-                        'Team': 'HomeTeam', 'PrevLeagPos': 'HomePrevLeagPos'}), how='left', on=['Season', 'HomeTeam'])
+                        'Team': 'HomeTeam', 'PrevLeagPos': 'HPrevLeagPos'}), how='left', on=['Div', 'Season', 'HomeTeam'])
     match_df = pd.merge(left=match_df, right=final_tables_df.rename(columns={
-                        'Team': 'AwayTeam', 'PrevLeagPos': 'AwayPrevLeagPos'}), how='left', on=['Season', 'AwayTeam'])
+                        'Team': 'AwayTeam', 'PrevLeagPos': 'APrevLeagPos'}), how='left', on=['Div', 'Season', 'AwayTeam'])
 
     # drop first season as no prev season for it
     first_season = list(season_dict.keys())[0]
     df_final = match_df[match_df.Season != first_season]
     if promotion_treatment == '20':
         # fill blanks with P for promoted (as they didn't exist in prev year)
-        df_final['HomePrevLeagPos'] = df_final['HomePrevLeagPos'].fillna(20)
-        df_final['AwayPrevLeagPos'] = df_final['AwayPrevLeagPos'].fillna(20)
+        df_final['HPrevLeagPos'] = df_final['HPrevLeagPos'].fillna(20)
+        df_final['APrevLeagPos'] = df_final['APrevLeagPos'].fillna(20)
     else:
         # fill blanks with P for promoted (as they didn't exist in prev year)
-        df_final['HomePrevLeagPos'] = df_final['HomePrevLeagPos'].fillna('P')
-        df_final['AwayPrevLeagPos'] = df_final['AwayPrevLeagPos'].fillna('P')
+        df_final['HPrevLeagPos'] = df_final['HPrevLeagPos'].fillna('P')
+        df_final['APrevLeagPos'] = df_final['APrevLeagPos'].fillna('P')
 
     return df_final
 
 
-def add_avg_ppg(match_df, streak_length):
+def add_avg_cols(match_df, cols, streak, avg_type='mean'):
 
-    sl = str(streak_length)
+    # str version of streak for col naming
+    sl = str(streak)
+    # get original cols as combine first changes col order
     orig_cols = list(match_df.columns)
 
+    # point map
     h_map = {'H': 3, 'D': 1, 'A': 0}
     a_map = {'H': 0, 'D': 1, 'A': 3}
 
-    # iterate over all the teams in the match_df (every team will play a home game so just just that)
-    for team in df.HomeTeam.unique():
-        # get the games for that team
-        team_df = df[(df.HomeTeam == team) | (df.AwayTeam == team)]
-        # now need to compute points for that team per game
-        team_df['PPG'] = 0
-        team_df.PPG = np.where(team_df.HomeTeam == team,
-                               team_df.FTR.map(h_map), team_df.PPG)
-        team_df.PPG = np.where(team_df.AwayTeam == team,
-                               team_df.FTR.map(a_map), team_df.PPG)
-        # compute mean, offset by 1 so we don't include result of current game
-        team_df['AvgPPG_' +
-                sl] = team_df.PPG.shift(1).rolling(streak_length).mean().fillna(0)
-        # add new cols for Home and Away versions
-        team_df['HomeAvgPPG_' +
-                sl] = np.where(team_df.HomeTeam == team, team_df['AvgPPG_'+sl], np.nan)
-        team_df['AwayAvgPPG_' +
-                sl] = np.where(team_df.AwayTeam == team, team_df['AvgPPG_'+sl], np.nan)
+    # define only col map we need based on cols
+    col_m = {k: v for k, v in COL_MAP.items() if k in cols}
+    # get raw_cols needed
+    raw_cols = [list(x.values()) for x in col_m.values()]
+    raw_cols = list(set([j for i in raw_cols for j in i]))
+    # issue error if not all raw columns are present based on demand
+    for c in raw_cols:
+        if c not in match_df.columns:
+            prob_cols = [k for k, v in col_m.items() if 'FTHG' in v.values()]
+            print('Unable to calc: {} without raw column: {}'.format(
+                prob_cols.join(', '), c))
 
-        cols_to_keep = ['HomeAvgPPG_'+sl, 'AwayAvgPPG_'+sl]
-        team_df = team_df[cols_to_keep]
+    # now we iterate over all the teams in the df and create the cols
+    teams = list(set(list(match_df.HomeTeam.unique()) +
+                     list(match_df.AwayTeam.unique())))
+    for t in teams:
+        # create list for final output cols to keep order
+        out_cols = []
+        # get only those teams
+        t_df = match_df[(match_df.HomeTeam == t) | (
+            match_df.AwayTeam == t)].sort_values('Date')
 
-        match_df = match_df.combine_first(team_df)
+        # now iterate over the cols we want and create the new col
+        for c, v in col_m.items():
+            # initialise the new cols with value 0
+            t_df[c] = 0
+            # special point map treatment for PPG based on FTR
+            if c == 'PPG':
+                t_df[c] = np.where(t_df.HomeTeam == t, t_df[v['Home']].map(
+                    h_map), t_df[v['Home']].map(a_map))
+            else:
+                # now add an un-averaged version based on whether home or away
+                t_df[c] = np.where(t_df.HomeTeam == t,
+                                   t_df[v['Home']], t_df[v['Away']])
 
-    return match_df[orig_cols + cols_to_keep]
+            # now compute backward looking avg col value and shift by 1 (to not include current game)
+            c_name = 'Avg'+c+'_'+sl
+            if avg_type == 'mean':
+                t_df[c_name] = t_df[c].rolling(streak).apply(np.mean).shift(1)
+            elif avg_type == 'exp':
+                c_name = 'Exp'+c_name
+                t_df[c_name] = t_df[c].ewm(span=streak).apply(np.mean).shift(1)
+            else:
+                t_df[c_name] = t_df[c].rolling(streak).apply(avg_type).shift(1)
+
+            # now we need to create 'Home' and 'Away' versions of cols for combine_first
+            # populate col where not t with np.nan for combine_first
+            h_col = 'H'+c_name
+            a_col = 'A'+c_name
+            out_cols.append(h_col)
+            out_cols.append(a_col)
+            t_df[h_col] = np.where(t_df.HomeTeam == t, t_df[c_name], np.nan)
+            t_df[a_col] = np.where(t_df.AwayTeam == t, t_df[c_name], np.nan)
+
+        # now we have our averaged df for the team t - we now combine it onto the original df
+        t_df = t_df[out_cols]
+        match_df = match_df.combine_first(t_df)
+
+    # order the cols the way we want, fix date sorting, return
+    match_df = match_df[orig_cols + out_cols].sort_values('Date')
+    return match_df
 
 
 def add_result_streak(match_df, streak_length):

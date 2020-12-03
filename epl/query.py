@@ -6,26 +6,50 @@ import pathlib
 import sqlite3
 
 
-# data path for the sqlite database
-dir_name = str(pathlib.Path(__file__).parent.absolute())
-dir_name = dir_name.split('/')[:-1] + ['data', 'match_results.sqlite']
-DB_PATH = "/".join(dir_name)
+# define the site root
+SITE_ROOT = 'https://www.football-data.co.uk/'
+DATA_ROOT = 'https://www.football-data.co.uk/data.php'
+DB_NAME = 'footie.sqlite'
+DB_NAME_UAT = 'footie_uat.sqlite'
 
 
-def create_conn():
-    conn = sqlite3.connect(DB_PATH)
+def get_root_dir():
+
+    script_location = os.path.realpath(__file__)
+    root_dir = script_location.split('/')[:-2]
+    return '/'.join(root_dir)
+
+
+def create_conn(uat=False):
+    if uat:
+        db_path = '/'.join([get_root_dir(), 'data', DB_NAME_UAT])
+    else:
+        db_path = '/'.join([get_root_dir(), 'data', DB_NAME])
+    conn = sqlite3.connect(db_path)
     return conn
 
 
-def query_db(query):
+def get_table_columns(table_name):
+    '''
+    Returns list of column names for table
+    '''
+    # establish connection
+    conn = create_conn()
+    # query and get cols
+    cursor = conn.execute('SELECT * from {} '.format(table_name))
+    cols = [x[0]for x in cursor.description]
+    return cols
+
+
+def query_db(query, uat=False):
     '''
     Generic function to hit the database and return results
     Query: str sql query statement
     '''
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = create_conn(uat=uat)
     except:
-        return "Unable to establish connection to {}".format(DB_PATH)
+        return "Unable to establish connection to {}".format(DB_NAME)
 
     try:
         print('Running query: {}'.format(query))
@@ -54,6 +78,8 @@ def query_creator(table, cols=None, wc=None):
         wc = ''
 
     if cols:
+        cols = ['[{}]'.format(x) if (
+            x in ['AS', 'FROM', 'WHERE', 'SELECT']) else x for x in cols]
         col_query = ', '.join(cols)
     else:
         col_query = '*'
