@@ -29,6 +29,20 @@ def create_conn(uat=False):
     return conn
 
 
+def table_exists(table_name, uat=False):
+
+    try:
+        res = query_db("SELECT name FROM sqlite_master WHERE type='table' AND name='{}'".format(
+            table_name), uat=uat)
+        if len(res) > 0:
+            return True
+        else:
+            return False
+    except:
+        print("Unable to query db - likely whole db doesn't exist")
+        return False
+
+
 def get_table_columns(table_name):
     '''
     Returns list of column names for table
@@ -54,6 +68,8 @@ def query_db(query, uat=False):
     try:
         print('Running query: {}'.format(query))
         res = pd.read_sql(query, conn)
+        if 'Date' in res.columns:
+            res['Date'] = pd.to_datetime(res['Date'])
     except:
         return "Unable to run query: {}".format(query)
     return res
@@ -88,10 +104,10 @@ def query_creator(table, cols=None, wc=None):
     return query
 
 
-def create_and_query(table, cols=None, wc=None):
+def create_and_query(table, uat=False, cols=None, wc=None):
 
     query = query_creator(table, cols, wc)
-    res = query_db(query)
+    res = query_db(query, uat=uat)
     if 'Date' in res.columns:
         res['Date'] = pd.to_datetime(res['Date'])
     return res

@@ -18,11 +18,12 @@ import sqlite3
 from urllib.request import Request, urlopen
 
 
-from epl.query import create_conn, query_creator, query_db
+from epl.query import create_conn, query_creator, query_db, table_exists
 
 # define the site root
 SITE_ROOT = 'https://www.football-data.co.uk/'
 DATA_ROOT = 'https://www.football-data.co.uk/data.php'
+FIXTURES_ROOT = 'https://www.football-data.co.uk/matches.php'
 DB_NAME = 'footie.sqlite'
 DB_NAME_UAT = 'footie_uat.sqlite'
 
@@ -163,10 +164,12 @@ def update_most_recents_register(uat=False):
             # concat and reindex
             df_reg = pd.concat([df_curr_recents, df_recents])
             df_reg = df_reg.reset_index(drop=True)
-            print("Writing down regsiter_most_recents.csv post append")
+            print("Writing down regsiter_most_recents{}.csv post append".format(
+                ('_uat' if uat else '')))
             df_reg.to_csv(reg_file, index=False)
         except:
-            print("Unable to append to register_most_recents.csv")
+            print("Unable to append to register_most_recents{}.csv".format(
+                ('_uat' if uat else '')))
 
     return reg_file
 
@@ -191,6 +194,9 @@ def get_register(reg_name):
     for c in ['MostRecentSeason', 'Season', 'ParseMessage']:
         if c in df_reg.columns:
             df_reg[c] = df_reg[c].apply(str)
+    if 'ParseMessage' in df_reg.columns:
+        df_reg['ParseMessage'] = np.where(
+            df_reg['ParseMessage'] == 'nan', '', df_reg['ParseMessage'])
     return df_reg
 
 
@@ -229,6 +235,26 @@ def get_all_curr_urls(country_dict):
                 csv_links.append(rec)
     df_links = pd.DataFrame(csv_links)
     return df_links
+
+
+def get_fixtures_link():
+    # get today date
+    d = pd.to_datetime(dt.date.today())
+
+    req = Request(FIXTURES_ROOT)
+    html_page = urlopen(req)
+    soup = BeautifulSoup(html_page, "lxml")
+
+    # find the fixtures csv link
+    for url_link in soup.findAll('a'):
+        # get the link ref e.g. 'mmz4281/2021/E0.csv'
+        l = url_link.get('href')
+        # if link not null and is a csv then add it
+        if l == 'fixtures.csv':
+            rec = {'Date': d,
+                   'url': SITE_ROOT+l}
+
+    return pd.DataFrame([rec])
 
 
 def create_match_register(uat=False):
@@ -288,6 +314,45 @@ def create_match_register(uat=False):
     return df_new_reg
 
 
+def update_fixture_register(uat=False):
+
+    # get fixture csv link in df format
+    df_links = get_fixtures_link()
+
+    # add parse status
+    df_links['Status'] = 'New'
+    df_links['ParseMessage'] = ''
+
+    # get current reg (if it exists)
+    if uat:
+        df_reg = get_register('register_fixtures_uat')
+        reg_file = get_reg_filename('register_fixtures_uat')
+    else:
+        df_reg = get_register('register_fixtures')
+        reg_file = get_reg_filename('register_fixtures')
+    print(reg_file)
+
+    if df_reg is None:
+        # if none then does not exist - so we create and set what we have
+        print('No reg detected - creating new reg in: {}'.format(reg_file))
+        df_links.to_csv(reg_file, index=False)
+        df_new_reg = df_links.copy()
+    else:
+        # then reg exists and we need to update it
+        # simple here - just concat on the end
+        d = pd.to_datetime(dt.date.today())
+        if len(df_reg[(df_reg.Date == d) & (df_reg.Status == 'Processed')]) > 0:
+            # then we have already processed today, do nothing
+            df_new_reg = df_reg.copy()
+        else:
+            df_new_reg = pd.concat([df_reg, df_links])
+            df_new_reg = df_new_reg.drop_duplicates()
+            print('Setting new reg down into: {}'.format(reg_file))
+            df_new_reg.to_csv(reg_file, index=False)
+
+    return df_new_reg
+
+
 def get_new_files(table_name, uat=False):
     '''
     Returns pd.DataFrame of files to be parsed for a given register
@@ -332,12 +397,13 @@ def fetch_new_files(df_new):
     for index, row in df_new.iterrows():
         try:
             df = fetch_file(row.url)
-            # add new cols and keep col order
-            cols = list(df.columns)
-            df['Country'] = row.Country
-            df['League'] = row.DivName
-            df['Season'] = row.Season
-            df = df[['Country', 'League', 'Season'] + cols]
+            # add new cols and keep col order if they are in reg (not in fixture reg)
+            if any([x in row.index for x in ['Country', 'DivName', 'Season']]):
+                cols = list(df.columns)
+                df['Country'] = row.Country
+                df['League'] = row.DivName
+                df['Season'] = row.Season
+                df = df[['Country', 'League', 'Season'] + cols]
             # remove cols with more than 99% nulls
             df = df[df.columns[df.isnull().mean() < 0.99]]
 
@@ -378,12 +444,7 @@ def handle_initial_match_db(df_new, uat=False):
     df = pd.concat(list(dfs['Results']))
     # remove col if >99% of col are NaNs in combined df
     df = df[df.columns[df.isnull().mean() < 0.99]]
-    # remove any cols with 'Unnamed' in them
-    df = df[[x for x in df.columns if 'Unnamed' not in x]]
-    # remove any rows if Div is na as garbage (as will all other cols)
-    df = df[~df.Div.isna()]
-    # standardise dates
-    df['Date'] = df.Date.apply(lambda x: standardise_dates(x))
+    df = clean_data(df)
 
     # set down data into db
     try:
@@ -427,6 +488,17 @@ def delete_table_rows(table_name, wc=None, uat=False):
         return False
 
 
+def clean_data(df):
+
+    # remove any cols with 'Unnamed' in them
+    df = df[[x for x in df.columns if 'Unnamed' not in x]]
+    # remove any rows if Div is na as garbage (as will all other cols)
+    df = df[~df.Div.isna()]
+    # standardise dates
+    df['Date'] = df.Date.apply(lambda x: standardise_dates(x))
+    return df
+
+
 def handle_update_match_db(df_new, uat=False):
 
     # for each new entry
@@ -444,6 +516,7 @@ def handle_update_match_db(df_new, uat=False):
         # only keep existing cols
         new_data = new_data[[
             x for x in new_data.columns if x in old_data.columns]]
+        new_data = clean_data(new_data)
 
         # now we delete the old data and insert the new data
         old_del = delete_table_rows('matches', wc=wc, uat=uat)
@@ -507,19 +580,141 @@ def process_match_data(uat=False, div_list=None, season_list=None):
     df_new = get_new_files('matches', uat=uat)
     # fetch new files if poss
     df_new = fetch_new_files(df_new)
+    if len(df_new) == 0:
+        # no files to process
+        print('No new files to process for matches table')
+        return None
     # handle new files depending on whether or not db exists
     if uat:
         db_file = '/'.join([get_root_dir(), 'data', DB_NAME_UAT])
     else:
         db_file = '/'.join([get_root_dir(), 'data', DB_NAME])
-    if not os.path.exists(db_file):
-        # then db does not exist and this is inital set
+    if (not table_exists('matches')) or (not os.path.exists(db_file)):
+        # then db and table does not exist and this is inital set
         print('Database doesnt exist - going to create it now')
         res = handle_initial_match_db(df_new, uat=uat)
     else:
         # db exists and we need to update the data in the table
         res = handle_update_match_db(df_new, uat=uat)
+    return res
 
+
+def clean_and_join_fixture_data(df_new, uat=False):
+
+    # add country, league and season data
+    divs = query_db('SELECT Div, Country, League from matches GROUP BY Div',
+                    uat=uat).sort_values('Country')
+    # assume fixtures are most recent season
+    seasons = get_register('register_most_recents' +
+                           ('_uat' if uat else '')).drop(columns='Date')
+    seasons = seasons.rename(columns={'MostRecentSeason': 'Season'})
+
+    # clean the data
+    res = df_new['Results'].values[0]
+    res = clean_data(res)
+
+    cols = list(res.columns)
+    res = pd.merge(left=res, right=divs, how='left', on=['Div'])
+    res = pd.merge(left=res, right=seasons, how='left', on=['Country'])
+    res = res[['Country', 'League', 'Season'] + cols]
+
+    df_new.at[df_new.index[0], 'Results'] = res
+
+    return df_new
+
+
+def handle_initial_fixture_db(df_new, uat=False):
+
+    # add asof date col
+    df = df_new['Results'].values[0]
+    cols = list(df.columns)
+    df['AsOfDate'] = pd.to_datetime(dt.date.today())
+    df = df[['AsOfDate'] + cols]
+
+    # set down data into db
+    try:
+        conn = create_conn(uat=uat)
+        print('Connection established - setting down intial db')
+        df.to_sql('fixtures', conn, index=False)
+        conn.close()
+        df_new['Status'] = 'Processed'
+        df_new['ParseMessage'] = ''
+    except:
+        print('Unable to set down intial fixture db')
+        df_new['Status'] = 'Error'
+        df_new['ParseMessage'] = 'Failed at initial setdown into sqlite'
+
+    # update the register
+    if uat:
+        reg_name = 'register_fixtures_uat'
+    else:
+        reg_name = 'register_fixtures'
+    new_reg = update_register(reg_name, df_new.drop(columns=['Results']))
+
+    return df_new
+
+
+def handle_update_fixture_db(df_new, uat=False):
+
+    # no updating required - merely appending on the end
+    df = df_new['Results'].values[0]
+    cols = list(df.columns)
+    df['AsOfDate'] = pd.to_datetime(dt.date.today())
+    df = df[['AsOfDate'] + cols]
+
+    try:
+        conn = create_conn(uat=uat)
+        df.to_sql('fixtures', conn, if_exists='append', index=False)
+        conn.close()
+        df_new['Status'] = 'Processed'
+        df_new['ParseMessage'] = ''
+    except:
+        print('Failed to append fixture data to table')
+        df_new['Status'] = 'Error'
+        df_new['ParseMessage'] = 'Failed to append fixture data'
+
+    if uat:
+        reg_name = 'register_fixtures_uat'
+    else:
+        reg_name = 'register_fixtures'
+    new_reg = update_register(reg_name, df_new.drop(columns=['Results']))
+
+    return df_new
+
+
+def process_fixture_data(uat=False):
+
+    # update the register
+    update_fixture_register(uat=uat)
+
+    # get new files
+    d = pd.to_datetime(dt.date.today())
+    df_new = get_new_files('fixtures', uat=uat)
+    # for fixtures only get on same day
+    df_new = df_new[df_new.Date == d]
+
+    # parse
+    df_new = fetch_new_files(df_new)
+    if len(df_new) == 0:
+        # no files to process
+        print('No new files to process for fixtures table')
+        return None
+
+    # clean and join meta data
+    df_new = clean_and_join_fixture_data(df_new)
+
+    # update / create fixtures table
+    if uat:
+        db_file = '/'.join([get_root_dir(), 'data', DB_NAME_UAT])
+    else:
+        db_file = '/'.join([get_root_dir(), 'data', DB_NAME])
+    if (not table_exists('fixtures')) or (not os.path.exists(db_file)):
+        # then db and table does not exist and this is inital set
+        print('fixtures table doesnt exist - going to create it now')
+        res = handle_initial_fixture_db(df_new, uat=uat)
+    else:
+        print('fixtures table exists - appending to it now')
+        res = handle_update_fixture_db(df_new, uat=uat)
     return res
 
 
