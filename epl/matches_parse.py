@@ -406,6 +406,8 @@ def fetch_new_files(df_new):
                 df = df[['Country', 'League', 'Season'] + cols]
             # remove cols with more than 99% nulls
             df = df[df.columns[df.isnull().mean() < 0.99]]
+            # only include if all teams are not null
+            df = df[(~df.HomeTeam.isna()) & (~df.AwayTeam.isna())]
 
             df_res.at[index, 'Results'] = df
             df_res.at[index, 'Status'] = 'Processed'
@@ -605,8 +607,8 @@ def clean_and_join_fixture_data(df_new, uat=False):
     divs = query_db('SELECT Div, Country, League from matches GROUP BY Div',
                     uat=uat).sort_values('Country')
     # assume fixtures are most recent season
-    seasons = get_register('register_most_recents' +
-                           ('_uat' if uat else '')).drop(columns='Date')
+    seasons = get_register('register_most_recents' + ('_uat' if uat else ''))
+    seasons = seasons[seasons.Date == seasons.Date.max()].drop(columns='Date')
     seasons = seasons.rename(columns={'MostRecentSeason': 'Season'})
 
     # clean the data

@@ -43,15 +43,19 @@ def table_exists(table_name, uat=False):
         return False
 
 
-def get_table_columns(table_name):
+def get_table_columns(table_name, uat=False):
     '''
     Returns list of column names for table
     '''
     # establish connection
-    conn = create_conn()
+    conn = create_conn(uat=uat)
     # query and get cols
-    cursor = conn.execute('SELECT * from {} '.format(table_name))
-    cols = [x[0]for x in cursor.description]
+    if table_exists(table_name, uat=uat):
+        cursor = conn.execute('SELECT * from {} '.format(table_name))
+        cols = [x[0]for x in cursor.description]
+    else:
+        print("Table {} doesn't exist - returning empty cols".format(table_name))
+        cols = []
     return cols
 
 
@@ -68,8 +72,15 @@ def query_db(query, uat=False):
     try:
         print('Running query: {}'.format(query))
         res = pd.read_sql(query, conn)
-        if 'Date' in res.columns:
-            res['Date'] = pd.to_datetime(res['Date'])
+        for d in ['Date', 'AsOfDate']:
+            if d in res.columns:
+                res[d] = pd.to_datetime(res[d])
+
+        # sort by cols if they are available so by def we get cols in chronological / grouped order
+        sort_cols = ['AsOfDate', 'Date', 'Country', 'Div']
+        sort_cols = [x for x in sort_cols if x in res.columns]
+        if len(sort_cols) > 0:
+            res = res.sort_values(sort_cols)
     except:
         return "Unable to run query: {}".format(query)
     return res
@@ -108,8 +119,9 @@ def create_and_query(table, uat=False, cols=None, wc=None):
 
     query = query_creator(table, cols, wc)
     res = query_db(query, uat=uat)
-    if 'Date' in res.columns:
-        res['Date'] = pd.to_datetime(res['Date'])
+    for d in ['Date', 'AsOfDate']:
+        if d in res.columns:
+            res[d] = pd.to_datetime(res[d])
     return res
 
 
