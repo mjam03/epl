@@ -68,8 +68,8 @@ def get_feat_col_names(feats, streak_length, avg_type):
     e.g. for 'GF' feat, sl = 3, avg_type='Avg'
     output would be {AvgGF_3: GF}
     '''
-    feat_cols = [avg_type+x+'_'+str(streak_length) for x in feats.keys()]
-    return dict(zip(feat_cols, feats.keys()))
+    feat_cols = [avg_type+x+'_'+str(streak_length) for x in feats]
+    return dict(zip(feat_cols, feats))
 
 
 def get_feat_required_cols(feats):
@@ -85,7 +85,7 @@ def create_col_map(feats, streak_length, avg_type):
     e.g. {'AvgGF_3': {'GF': {'Home': 'FTHG', 'Away': 'FTAG'}}}
     '''
     col_map = {k: {v: feats[v]} for k, v in get_feat_col_names(
-        feats, streak_length, avg_type).items()}
+        feats.keys(), streak_length, avg_type).items()}
     return col_map
 
 

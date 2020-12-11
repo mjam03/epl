@@ -1,6 +1,7 @@
 import datetime as dt
 import numpy as np
 import pandas as pd
+from scipy.stats import poisson
 
 from epl.match_utils import full_table_calculator
 
@@ -284,6 +285,123 @@ def add_team_result_streak(match_df, streak_length, team):
         print('Could not generate for team: {}'.format(team))
 
     return match_df
+
+
+def home_away_to_team_opp(df):
+    '''
+    Accepts df of n matches, converts to 2n rows
+    HomeTeam / Away Team converted to Team / Opp
+    '''
+    df_home = df.copy()
+    df_home = df_home.rename(columns={'HomeTeam': 'Team', 'AwayTeam': 'Opp'})
+    df_home['Home'] = 1
+
+    df_away = df.copy()
+    df_away = df_away.rename(columns={'AwayTeam': 'Team', 'HomeTeam': 'Opp'})
+    df_away['Home'] = 0
+
+    df_m = pd.concat([df_home, df_away]).sort_values(['Date', 'Team'])
+    df_m['GF'] = np.where(df_m['Home'] == 1, df_m['FTHG'], df_m['FTAG'])
+    df_m['GA'] = np.where(df_m['Home'] == 1, df_m['FTAG'], df_m['FTHG'])
+    df_m = df_m.drop(columns=['FTHG', 'FTAG'])
+
+    return df_m
+
+
+def create_goal_probs(lambdas, max_goals):
+    '''
+    Returns an array of arrays for goal probabilities
+    Accepts an array of poisson lambdas
+    '''
+    # form goal array from 0 to max_goals
+    goal_array = np.arange(0, max_goals + 1)
+
+    if isinstance(lambdas, pd.Series):
+        # convert to np array as much faster
+        lambdas = lambdas.values
+        goal_probs = [poisson.pmf(goal_array, x) for x in lambdas]
+    elif isinstance(lambdas, np.ndarray):
+        goal_probs = [poisson.pmf(goal_array, x) for x in lambdas]
+    return goal_probs
+
+
+def create_poisson_prediction_output(eval_df, df, other_data_cols):
+
+    eval_df['GoalProbs'] = create_goal_probs(eval_df['lambda'], 5)
+    # get the most likely score from the probability array
+    # np 2-3x faster than pandas apply here
+    # e.g. vs .apply(lambda x: np.argmax(x) + 1)
+    eval_df['MaxProbGoals'] = np.argmax(
+        np.stack(eval_df['GoalProbs'].values), axis=1)+1
+
+    # get key cols to reformat into per match data
+    match_id_cols = ['Date', 'Team', 'Opp']
+    eval_df = pd.merge(
+        left=eval_df, right=df[match_id_cols], how='left', left_index=True, right_index=True)
+
+    eval_df = eval_df_to_match_eval_df(
+        eval_df, df, match_id_cols, other_data_cols)
+    eval_df = create_match_prediction_stats(eval_df)
+
+    return eval_df
+
+
+def eval_df_to_match_eval_df(eval_df, df, match_id_cols, other_cols):
+
+    match_result = ['FTR']
+
+    home_eval = eval_df[eval_df.Home == 1]
+    # join other data on here to minimise joins
+    home_eval = pd.merge(
+        home_eval, right=df[match_id_cols + other_cols + match_result], how='left', on=match_id_cols)
+
+    home_eval = home_eval.rename(columns={'GF': 'FTHG', 'Team': 'HomeTeam', 'Opp': 'AwayTeam',
+                                          'GoalProbs': 'HomeGoalProbs', 'MaxProbGoals': 'HomeMaxProbGoals', 'lambda': 'HomeLambda'})
+    home_eval = home_eval.drop(columns=['Home'])
+
+    away_eval = eval_df[eval_df.Home == 0]
+    away_eval = away_eval[['Date', 'Team', 'GF',
+                           'lambda', 'GoalProbs', 'MaxProbGoals']]
+    away_eval = away_eval.rename(columns={'GF': 'FTAG', 'Team': 'AwayTeam',
+                                          'GoalProbs': 'AwayGoalProbs', 'MaxProbGoals': 'AwayMaxProbGoals', 'lambda': 'AwayLambda'})
+
+    # model trained on indiv teams, not matches
+    # this means for a given match, not necessarily both teams in the training data set
+    # we thus do an inner join and drop some data here (where only 1 team in match in training data)
+    df_eval = pd.merge(left=home_eval, right=away_eval,
+                       how='inner', on=['Date', 'AwayTeam'])
+
+    # reorder cols
+    key_cols = ['Date', 'HomeTeam', 'AwayTeam']
+    goal_cols = ['FTHG', 'FTAG']
+    model_cols = [y+x for x in ['Lambda', 'GoalProbs', 'MaxProbGoals']
+                  for y in ['Home', 'Away']]
+    df_eval = df_eval[key_cols + other_cols +
+                      match_result + goal_cols + model_cols]
+    return df_eval
+
+
+def create_match_prediction_stats(df_eval):
+
+    df_eval['GoalMatrix'] = [np.outer(x, y) for x, y in zip(
+        df_eval.HomeGoalProbs.values, df_eval.AwayGoalProbs.values)]
+
+    df_eval['AwayProb'] = [np.triu(x, 1).sum()
+                           for x in df_eval['GoalMatrix'].values]
+    df_eval['DrawProb'] = [np.trace(x).sum()
+                           for x in df_eval['GoalMatrix'].values]
+    df_eval['HomeProb'] = [np.tril(x, -1).sum()
+                           for x in df_eval['GoalMatrix'].values]
+    df_eval['FTRProbs'] = list(
+        zip(df_eval['AwayProb'], df_eval['DrawProb'], df_eval['HomeProb']))
+
+    res = ['A', 'D', 'H']
+    df_eval['FTRPred'] = df_eval['FTRProbs'].apply(
+        lambda x: res[x.index(max(x))])
+    df_eval['Score'] = list(zip(df_eval['FTHG'], df_eval['FTAG']))
+    df_eval['MaxProbScore'] = list(
+        zip(df_eval['HomeMaxProbGoals'], df_eval['AwayMaxProbGoals']))
+    return df_eval
 
 
 if __name__ == '__main__':
