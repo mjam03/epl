@@ -44,9 +44,10 @@ FEATS = {'GF': {'Home': 'FTHG', 'Away': 'FTAG'},
 FEAT_LIST = [{'feat_type': 'avg',
               'feat_dict': FEATS,
               'streak': x,
-              'avg_type': 'Avg'} for x in [3, 5, 10, 20, 40]]
+              'avg_type': 'Avg'} for x in [3, 5, 10, 20, 40, 80]]
 
 if __name__ == '__main__':
     process_match_data()
     process_fixture_data()
-    process_feature_data(FEAT_LIST)
+    process_feature_data(FEAT_LIST, fixtures=False)
+    process_feature_data(FEAT_LIST, fixtures=True)

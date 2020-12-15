@@ -23,36 +23,46 @@ def create_features_key_col(df):
         return None
 
 
-def get_current_feature_keys(uat=False):
+def get_current_feature_keys(table_name, uat=False):
     '''
     Returns list of keys currently in the features table
     Used to calc what new matches need features computed
     '''
-    if table_exists('features', uat=uat):
+    if table_exists(table_name, uat=uat):
         try:
-            df = create_and_query('features', uat=uat, cols=FEATURE_KEY_COLS)
+            df = create_and_query(table_name, uat=uat, cols=FEATURE_KEY_COLS)
             df = create_features_key_col(df)
             curr_keys = list(df.Key.values)
             return curr_keys
         except:
-            print('Failed trying to query features table')
+            print('Failed trying to query {} table'.format(table_name))
             return []
     else:
-        print("Features table doesn't exist")
+        print("{} table doesn't exist".format(table_name))
         return []
 
 
-def get_new_matches(uat=False):
+def get_new_matches(fixtures=False, uat=False):
     '''
     Returns df of [Date, Team] for matches with no matching feature data
     Gets current feature and match keys, diffs and returns matches
     '''
     # first query feature table to get the key cols
-    curr_feat_keys = get_current_feature_keys(uat=uat)
+    if fixtures:
+        curr_feat_keys = get_current_feature_keys('fixtures_features', uat=uat)
+    else:
+        curr_feat_keys = get_current_feature_keys('features', uat=uat)
 
     # next query matches table for the key cols for comparison
     desired_cols = ['Date', 'HomeTeam', 'AwayTeam'] + FEATURE_ID_COLS
-    curr_match_keys = create_and_query('matches', uat=uat, cols=desired_cols)
+    if fixtures:
+        curr_match_keys = create_and_query(
+            'fixtures', uat=uat, cols=desired_cols)
+        curr_match_keys = curr_match_keys.drop_duplicates()
+    else:
+        curr_match_keys = create_and_query(
+            'matches', uat=uat, cols=desired_cols)
+
     # transform HomeTeam and AwayTeam into singular Team column
     curr_match_keys = convert_home_away_df(curr_match_keys)
     curr_match_keys = create_features_key_col(curr_match_keys)
@@ -266,14 +276,14 @@ def merge_home_away(ft_dfs, all_feats, home_feats, away_feats, shift=True):
     return df_merged
 
 
-def handle_feats(feat_list):
+def handle_feats(feat_list, fixtures=False):
 
     # for each list of features, applies correct function to args
     # concats them all together columnwise at the end
     feat_dfs = []
 
     # get the new matches we need to compute for
-    df_new_matches = get_new_matches()
+    df_new_matches = get_new_matches(fixtures=fixtures)
     if len(df_new_matches) == 0:
         print('No new matches to process features for')
         return None
@@ -318,7 +328,7 @@ def handle_feats(feat_list):
                 ft_dfs[k] = df_f
 
             df_feats = merge_home_away(
-                ft_dfs, all_feats, home_feats, away_feats, shift=True)
+                ft_dfs, all_feats, home_feats, away_feats, shift=not(fixtures))
 
             # now we have our correctly offset feats
             # we need to select just the cols we need
@@ -335,8 +345,17 @@ def handle_feats(feat_list):
         left, right, on=key_cols, how='outer'), feat_dfs)
 
     # now we only return the matches we needed
-    df_final = pd.merge(left=df_new_matches,
-                        right=df_merged, how='left', on=key_cols)
+    if fixtures:
+        # drop location for fixtures as we want most recent game regardless
+        df_merged = df_merged.drop(columns=['Location'])
+        # sort by date, then team for asof join
+        df_merged = df_merged.sort_values(FEATURE_KEY_COLS)
+        # backwards as of join the data on
+        df_final = pd.merge_asof(df_new_matches, df_merged, on='Date', by=[
+                                 'Team'], direction='backward', allow_exact_matches=False)
+    else:
+        df_final = pd.merge(left=df_new_matches,
+                            right=df_merged, how='left', on=key_cols)
     return df_final
 
 
@@ -354,7 +373,7 @@ def get_requested_feat_cols(feat_list):
     return feats
 
 
-def process_feature_data(feat_list, uat=False):
+def process_feature_data(feat_list, fixtures=False, uat=False):
     '''
     Handles process of:
      - Identifying new matches that require features
@@ -362,6 +381,10 @@ def process_feature_data(feat_list, uat=False):
      - Compute new features data
      - Set/append down into sqlite
     '''
+    if fixtures:
+        table_name = 'fixtures_features'
+    else:
+        table_name = 'features'
     # first check if the columns requested are equal to those in the table
     # will handle this in future but for now just throw an error
     req_feats = get_requested_feat_cols(feat_list)
@@ -369,8 +392,8 @@ def process_feature_data(feat_list, uat=False):
         ['Location'] + FEATURE_ID_COLS + req_feats
 
     cols_match = False
-    if table_exists('features', uat=uat):
-        curr_cols = get_table_columns('features', uat=uat)
+    if table_exists(table_name, uat=uat):
+        curr_cols = get_table_columns(table_name, uat=uat)
         # use sets as all cols should be unique names and this gens order
         cols_match = (set(curr_cols) == set(new_feat_cols))
     else:
@@ -379,23 +402,37 @@ def process_feature_data(feat_list, uat=False):
 
     # if cols match then can go ahead and process
     if cols_match:
-        df = handle_feats(feat_list)
+        df = handle_feats(feat_list, fixtures=fixtures)
     else:
-        print('New requested cols do not match the existing features columns')
-        return None
+        # for now given sqlite limitations, check if new feats > existing cols
+        # if so then we delete the current features table and set new one
+        if set(curr_cols).issubset(set(new_feat_cols)):
+            print(
+                'Old cols subset of new requested {} - deleting and recreating'.format(table_name))
+            conn = create_conn(uat=uat)
+            cur = conn.cursor()
+            cur.execute('DROP TABLE {}'.format(table_name))
+            conn.commit()
+            conn.execute('VACUUM')
+            conn.close()
+            df = handle_feats(feat_list, fixtures=fixtures)
+        else:
+            print(
+                'New requested cols do not match the existing {} columns'.format(table_name))
+            return None
 
     # now we have a df for the new matches
     if df is None:
         # then no new matches and exit
-        print('Exiting feature processing')
+        print('Exiting feature processing for table {}'.format(table_name))
         return None
     else:
         # we need to set the table down into sql
         try:
             conn = create_conn(uat=uat)
-            df.to_sql('features', conn, if_exists='append', index=False)
+            df.to_sql(table_name, conn, if_exists='append', index=False)
         except:
-            print('Failed to set down / append to features table post calc')
+            print('Failed to set down / append to {} table post calc'.format(table_name))
 
     return df
 

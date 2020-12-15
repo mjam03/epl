@@ -98,6 +98,14 @@ def query_creator(table, cols=None, wc=None):
         for col, cond in wc.items():
             if isinstance(cond[1], str):
                 conds.append("{} {} '{}'".format(col, cond[0], cond[1]))
+            elif isinstance(cond[1], list):
+                if cond[0] == 'IN':
+                    if isinstance(cond[1][0], str):
+                        in_stat = "("+", ".join(["'{}'".format(x)
+                                                 for x in cond[1]])+")"
+                    else:
+                        in_stat = conds.append("("+", ".join(cond[1])+")")
+                    conds.append("{} {} {}".format(col, cond[0], in_stat))
             else:
                 conds.append("{} {} {}".format(col, cond[0], cond[1]))
         wc = 'WHERE ' + ' AND '.join(conds)
