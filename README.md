@@ -15,7 +15,7 @@ __Dependencies__
 __Instructions__
 
 To run the code on your local machine from scratch:
-1. Open your cmd line and go to where you want to install e.g. to install like below go to 'dev' as parent directory:
+1. Open your cmd line and go to where you want to install e.g. to install like below go to `dev` as parent directory:
 ```
 ../dev/
     project1/
@@ -26,8 +26,8 @@ To run the code on your local machine from scratch:
 ```
 git clone https://github.com/mjam03/epl.git
 ```
-3. Run the setup.py script to:
- - Add ../parent_directory/epl to your python path (so e.g. from epl.query import blahblahblah will work)
+3. Run the `setup.py` script to:
+ - Add ../parent_directory/epl to your python path (so e.g. `from epl.query import blahblahblah` will work)
  - Create an 'epl' conda environment (utilises environment.yaml in this git) so you have all the required libraries (statsmodels, numpy etc) to run this code
 4. Run the database creation/management script to create your own local sqlite database - the script is in epl/scripts:
 ```
