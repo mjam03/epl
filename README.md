@@ -26,11 +26,21 @@ To run the code on your local machine from scratch:
 ```
 git clone https://github.com/mjam03/epl.git
 ```
-3. Run the `setup.py` script to:
- - Add ../parent_directory/epl to your python path (so e.g. `from epl.query import blahblahblah` will work)
- - Create an 'epl' conda environment (utilises environment.yaml in this git) so you have all the required libraries (statsmodels, numpy etc) to run this code
-4. Run the database creation/management script to create your own local sqlite database - the script is in epl/scripts:
+3. Create a conda environment to run the code inside - this is initialised by the included `environment.yml` file:
 ```
-cd scripts
+conda env create -f environment.yml
+```
+4. Activate the newly created environment - this is required _before_ the next step so `epl` is initialised within the conda env:
+```
+conda activate epl
+```
+5. Inside directory (using above example would be in `dev/epl/`, execute the setup.py script s.t. the python functions within `epl/` can be picked up - explained brilliantly [here](https://godatadriven.com/blog/a-practical-guide-to-using-setup-py/):
+```
+pip install -e .
+```
+pip does this for us and will create a .egg-info/ folder, the -e arg ensures local changes to the code are picked up (do not need to pip install again to pick up changes)
+6. Create the sqlite database by running the `parse.py` script inside `epl/scripts/`:
+```
+cd ./epl/scripts/
 python parse.py
 ```
