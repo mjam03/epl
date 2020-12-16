@@ -38,7 +38,7 @@ conda activate epl
 ```
 pip install -e .
 ```
-pip does this for us and will create a .egg-info/ folder, the -e arg ensures local changes to the code are picked up (do not need to pip install again to pick up changes)
+pip does this for us and will create a `.egg-info/` directory (used internally to identify the files needed), the -e arg ensures local changes to the code are picked up (do not need to pip install again to pick up changes)
 6. Create the sqlite database by running the `parse.py` script inside `epl/scripts/`:
 ```
 cd ./epl/scripts/
