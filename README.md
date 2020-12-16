@@ -16,4 +16,15 @@ To run the code on your local machine from scratch:
                project2/
                epl/
 ```
-2. 
+2. Once in your chosen parent directory, run the following to clone this git repo locally (requires git to be installed - comes as default on mac):
+```
+git clone https://github.com/mjam03/epl.git
+```
+3. Run the setup.py script to:
+ - Add ../parent_directory/epl to your python path (so e.g. from epl.query import blahblahblah will work)
+ - Create an 'epl' conda environment (utilises environment.yaml in this git) so you have all the required libraries (statsmodels, numpy etc) to run this code
+4. Run the database creation/management script to create your own local sqlite database - the script is in epl/scripts:
+```
+cd scripts
+python parse.py
+```
