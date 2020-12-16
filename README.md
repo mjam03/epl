@@ -13,6 +13,7 @@ __Dependencies__
 2. [conda](https://docs.conda.io/en/latest/miniconda.html): Package & environment manager - used to create python environment (populated with required python libs) to run the code. Helpful installation instructions for __miniconda__ [here](https://conda.io/projects/conda/en/latest/user-guide/install/macos.html)
 
 __Instructions__
+
 To run the code on your local machine from scratch:
 1. Open your cmd line and go to where you want to install e.g. to install like below go to 'dev' as parent directory:
 ```
