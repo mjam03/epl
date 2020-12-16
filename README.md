@@ -8,6 +8,10 @@ Code consists of several main branches:
  - Modelling/Evaluation Helpers: Helper functions wrapped around standard libs (statsmodels, sklearn) to improve notebook workflow (e.g. pretty print confusion matrix using seaborn)
 
 ## Get Started
+__Dependencies__
+1. [git](https://git-scm.com/): Version Control System - used here to clone the git repo locally. Pre-installed on most linux/mac, install instructions [here](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) if required
+2. [conda](https://docs.conda.io/en/latest/miniconda.html): Package & environment manager - used to create python environment (populated with required python libs) to run the code. Helpful installation instructions for __miniconda__ [here](https://conda.io/projects/conda/en/latest/user-guide/install/macos.html)
+__Instructions__
 To run the code on your local machine from scratch:
 1. Open your cmd line and go to where you want to install e.g. to install like below go to 'dev' as parent directory:
 ```
