@@ -10,9 +10,10 @@ Code consists of several main branches:
 ## Get Started
 To run the code on your local machine from scratch:
 1. Open your cmd line and go to where you want to install e.g. to install like below go to dev as parent directory:
-```/User/username/dev/
-              project1/
-              project2/
-              epl/
+```
+/User/username/dev/
+               project1/
+               project2/
+               epl/
 ```
 2. 
