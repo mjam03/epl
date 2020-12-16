@@ -15,31 +15,25 @@ __Dependencies__
 __Instructions__
 
 To run the code on your local machine from scratch:
-1. Open your cmd line and go to where you want to install e.g. to install like below go to `dev` as parent directory:
-```
-../dev/
-    project1/
-    project2/
-    epl/
-```
-2. Once in your chosen parent directory, run the following to clone this git repo locally (requires git to be installed - comes as default on mac):
+1. Once in your chosen parent directory, run the following to clone this git repo locally (requires git to be installed - comes as default on mac):
 ```
 git clone https://github.com/mjam03/epl.git
 ```
-3. Create a conda environment to run the code inside - this is initialised by the included `environment.yml` file:
+2. Create a conda environment to run the code inside - this is initialised by the included `environment.yml` file:
 ```
 conda env create -f environment.yml
 ```
-4. Activate the newly created environment - this is required _before_ the next step so `epl` is initialised within the conda env:
+3. Activate the newly created environment - this is required _before_ the next step so `epl` is initialised within the conda env:
 ```
 conda activate epl
 ```
-5. Inside directory (using above example would be in `dev/epl/`, execute the setup.py script s.t. the python functions within `epl/` can be picked up - explained brilliantly [here](https://godatadriven.com/blog/a-practical-guide-to-using-setup-py/):
+4. Inside directory (i.e. in `./epl/`), execute the setup.py script s.t. the python functions within `epl/` can be picked up - explained brilliantly [here](https://godatadriven.com/blog/a-practical-guide-to-using-setup-py/):
 ```
 pip install -e .
 ```
 pip does this for us and will create a `.egg-info/` directory (used internally to identify the files needed), the -e arg ensures local changes to the code are picked up (do not need to pip install again to pick up changes)
-6. Create the sqlite database by running the `parse.py` script inside `epl/scripts/`:
+
+5. Create the sqlite database by running the `parse.py` script inside `epl/scripts/`:
 ```
 cd ./epl/scripts/
 python parse.py
